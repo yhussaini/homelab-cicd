@@ -27,7 +27,7 @@ spec:
       containers:
         - name: demo-app
           # The CI pipeline rewrites this line on every build. Do not edit by hand.
-          image: ghcr.io/OWNER/demo-app:initial
+          image: ghcr.io/yhussaini/demo-app:sha-8039ed8
           ports:
             - name: http
               containerPort: 8080
