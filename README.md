@@ -62,9 +62,13 @@ Keep it secret. Don't paste it into chats or files.
 
 ### 6. Install Flux on the master (MobaXterm, k8smaster only)
 ```bash
-curl -s https://fluxcd.io/install.sh | bash
+curl -s https://fluxcd.io/install.sh | FLUX_VERSION=2.4.0 bash
+flux --version        # flux version 2.4.0
 flux check --pre
 ```
+**Why v2.4.0:** this cluster runs Kubernetes 1.29. Flux v2.4.0 is the newest release that supports 1.29
+(its table: 1.29, 1.30, 1.31). v2.5+ needs 1.30+, and the current v2.10 needs 1.35+.
+`flux bootstrap` installs the same version as the CLI. After upgrading Kubernetes, upgrade Flux too.
 
 ### 7. Bootstrap Flux (k8smaster)
 ```bash
@@ -78,9 +82,6 @@ unset GITHUB_TOKEN
 ```
 This installs the Flux controllers in `flux-system` and commits `clusters/homelab/flux-system/` to the repo.
 Afterwards, on Windows: `git pull`.
-
-If `flux check --pre` says the Kubernetes version (1.29) is too old for this Flux release, add
-`--version=<older flux version>` to the bootstrap command, or upgrade the cluster first.
 
 ### 8. Check
 ```bash
