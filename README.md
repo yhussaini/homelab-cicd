@@ -49,9 +49,10 @@ Git opens a browser window to sign in the first time.
 GitHub → repo → **Actions**. `test → build → deploy` should go green. The deploy job adds a commit
 `deploy: demo-app ghcr.io/...:sha-xxxxxxx`.
 
-### 4. Make the image public (one time)
-New GHCR packages are private, so the cluster can't pull them.
-GitHub → your profile → **Packages** → `demo-app` → **Package settings** → **Change visibility** → Public.
+### 4. Check the image is public
+The image carries an `org.opencontainers.image.source` label pointing at this public repo, so GHCR links it
+to the repo and it inherits public visibility. Nothing to do. If the cluster gets `ImagePullBackOff` with
+`unauthorized`, set it by hand: profile → **Packages** → `demo-app` → **Package settings** → Change visibility → Public.
 
 ### 5. Create a token for Flux
 GitHub → Settings → Developer settings → **Fine-grained tokens** → Generate:
