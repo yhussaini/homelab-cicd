@@ -25,7 +25,7 @@ code{{color:{color}}}
 <h1>Hello from the homelab</h1>
 <p>Version: <code>{version}</code></p>
 <p>Served by pod: <code>{hostname}</code></p>
-<p>Deployed by GitHub Actions + Flux</p>
+<p>Deployed automatically by GitHub Actions + Flux</p>
 </div></body></html>
 """.format(version=version, hostname=hostname, color=color)
 
