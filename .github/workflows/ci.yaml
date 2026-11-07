@@ -27,9 +27,18 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Unit tests
+      - name: Site checks (HTML, example-only domains, nginx config)
         working-directory: app
-        run: python -m unittest -v
+        run: python -m unittest discover -s tests -v
+      - name: Smoke test the container
+        run: |
+          docker build -t demo-app:test --build-arg APP_VERSION=ci-test app
+          docker run -d --name smoke -p 8080:8080 demo-app:test
+          for i in $(seq 1 20); do curl -fs http://127.0.0.1:8080/healthz && break; sleep 1; done
+          curl -fs http://127.0.0.1:8080/ | grep -q "<title>"
+          curl -fs http://127.0.0.1:8080/version | grep -q ci-test
+          echo "smoke test passed"
+          docker rm -f smoke
 
   build:
     needs: test

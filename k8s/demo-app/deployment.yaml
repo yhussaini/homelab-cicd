@@ -23,7 +23,7 @@ spec:
     spec:
       securityContext:
         runAsNonRoot: true
-        runAsUser: 10001
+        runAsUser: 101
       containers:
         - name: demo-app
           # The CI pipeline rewrites this line on every build. Do not edit by hand.
@@ -31,9 +31,6 @@ spec:
           ports:
             - name: http
               containerPort: 8080
-          env:
-            - name: APP_COLOR
-              value: "#2563eb"
           readinessProbe:
             httpGet:
               path: /healthz
@@ -50,8 +47,14 @@ spec:
               memory: 32Mi
             limits:
               memory: 64Mi
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp   # nginx writes its pid file and temp files here; the rest is read-only
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
             capabilities:
               drop: ["ALL"]
+      volumes:
+        - name: tmp
+          emptyDir: {}

@@ -5,7 +5,7 @@ built with **GitHub Actions** (CI) and **Flux** GitOps (CD).
 
 ```
 git push ──► GitHub Actions ──────────────────────────────────────────┐
-              1. test   : python -m unittest                         │
+              1. test   : site checks + container smoke test           │
               2. build  : docker build → ghcr.io/<owner>/demo-app:sha-xxxxxxx
               3. deploy : commit the new tag into k8s/demo-app/deployment.yaml
                                                                      ▼
@@ -20,7 +20,7 @@ port forwarding or kubeconfig in CI is needed.
 
 | Path | What |
 |---|---|
-| `app/` | Demo web app (Python standard library only), unit tests, Dockerfile |
+| `app/` | Static site: `site/index.html` (AD CS certificate tracker, sample data only), `nginx.conf`, `Dockerfile` (nginx-unprivileged), `tests/` |
 | `k8s/demo-app/` | Namespace, Deployment (2 replicas, probes, non-root, read-only FS), NodePort Service `:30090` |
 | `clusters/homelab/` | Flux config: `flux-sync.yaml` (watch this repo), `flux-system/` (Flux itself), `demo-app.yaml` |
 | `.github/workflows/ci.yaml` | The pipeline |
@@ -80,7 +80,7 @@ kubectl -n demo get pods -o wide
 Open http://192.168.0.16:30090 (any node IP works).
 
 ### 7. Try the pipeline
-Edit `app/main.py` (e.g. change the `<h1>` text), commit, push. In about 2–3 minutes the page shows
+Edit `app/site/index.html` (e.g. change the `<h1>` text), commit, push. In about 2–3 minutes the page shows
 the new text and the new `sha-` version, with no manual `kubectl`.
 
 ## Rollback

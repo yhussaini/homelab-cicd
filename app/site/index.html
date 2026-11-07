@@ -1,0 +1,840 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AD CS certificate tracker</title>
+<!-- build 7: CA request ID; live link via adcs-data.js; flashing critical tiles, independent of OS animation setting -->
+<style>
+:root{
+  --bg:#161616; --panel:#232322; --panel-bd:#3b3b39; --text:#ebe9e4; --muted:#aeaca6; --field:#1a1a19;
+  --ca-bg:#3c3489; --ca-bd:#aaa3f2; --ca-tx:#f3f1ff;
+  --leaf-bg:#0b5345; --leaf-bd:#5fd6b3; --leaf-tx:#eafff8; --arrow:#5fd6b3;
+  --ok-bg:#27500a; --ok-tx:#eef9e2; --ok-bar:#5d9a1f;
+  --watch-bg:#633806; --watch-tx:#ffeccf; --watch-bar:#c9781a;
+  --crit-bg:#791f1f; --crit-tx:#ffe3e3; --crit-bar:#d24545;
+  --exp-bg:#4b1528; --exp-tx:#ffdce8; --exp-bar:#b0355f;
+  --none-bg:#2c2c2a; --none-tx:#d6d4ce;
+  --track:#343432; --sel:#4a9eff; --tile-bd:rgba(255,255,255,.09);
+}
+@media (prefers-color-scheme: light){
+  :root{
+    --bg:#f1f0ec; --panel:#ffffff; --panel-bd:#d5d3cb; --text:#1d1d1b; --muted:#5d5c57; --field:#ffffff;
+    --ca-bg:#eeedfe; --ca-bd:#534ab7; --ca-tx:#26215c;
+    --leaf-bg:#e1f5ee; --leaf-bd:#0f6e56; --leaf-tx:#04342c; --arrow:#0f6e56;
+    --ok-bg:#cfe8b4; --ok-tx:#173404; --ok-bar:#4f8a17;
+    --watch-bg:#f8cf8c; --watch-tx:#412402; --watch-bar:#ba7517;
+    --crit-bg:#f4b4b4; --crit-tx:#501313; --crit-bar:#c53030;
+    --exp-bg:#e9a9c0; --exp-tx:#4b1528; --exp-bar:#99355a;
+    --none-bg:#eceae4; --none-tx:#44443f;
+    --track:#e2e0d9; --sel:#185fa5; --tile-bd:rgba(0,0,0,.12);
+  }
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{margin:0}
+body{background:var(--bg);color:var(--text);font:16px/1.45 "Segoe UI",system-ui,-apple-system,"Helvetica Neue",Arial,sans-serif;padding:20px}
+.wrap{max-width:1500px;margin:0 auto}
+h1{font-size:22px;font-weight:600;margin:0}
+.top{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;justify-content:space-between;margin-bottom:14px}
+.muted{color:var(--muted)}
+.top p{margin:2px 0 0;font-size:14px}
+.actions{display:flex;flex-wrap:wrap;gap:8px}
+button,select,input,textarea{font:inherit;color:inherit}
+.btn{background:var(--field);border:1px solid var(--panel-bd);border-radius:6px;padding:7px 14px;cursor:pointer}
+.btn:hover{border-color:var(--muted)}
+.btn.primary{background:var(--ca-bg);border-color:var(--ca-bd);color:var(--ca-tx)}
+.btn.danger{border-color:var(--crit-bar)}
+.btn.small{padding:4px 10px;font-size:14px}
+:focus-visible{outline:2px solid var(--sel);outline-offset:2px}
+.banner{background:var(--watch-bg);color:var(--watch-tx);border-radius:8px;padding:10px 14px;margin-bottom:14px;display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;font-size:15px}
+.banner .btn{background:transparent;border-color:currentColor;color:inherit}
+.panel{background:var(--panel);border:1px solid var(--panel-bd);border-radius:14px;padding:22px 24px 20px}
+
+/* diagram */
+.diagram{display:grid;grid-template-columns:minmax(0,1fr) minmax(130px,.8fr) minmax(0,1.05fr);align-items:center;height:236px;margin:0 5%}
+.node{border:2px solid;border-radius:12px;padding:12px 16px;text-align:center;min-width:0;display:flex;flex-direction:column;justify-content:center}
+.node b,.node span{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.node b{font-size:21px;font-weight:600}
+.node span{font-size:17px}
+#dTpl{font-weight:600}
+.node.ca{background:var(--ca-bg);border-color:var(--ca-bd);color:var(--ca-tx);min-height:118px}
+.node.leaf{background:var(--leaf-bg);border-color:var(--leaf-bd);color:var(--leaf-tx)}
+.leafs{display:grid;grid-template-rows:104px 104px;gap:28px;min-width:0}
+.wires{position:relative;height:236px}
+.wires svg{position:absolute;inset:0;width:100%;height:100%}
+.wires path{fill:none;stroke:var(--arrow);stroke-width:2.5;vector-effect:non-scaling-stroke}
+.wires .head{position:absolute;right:2px;width:12px;height:12px;border-top:2.5px solid var(--arrow);border-right:2.5px solid var(--arrow);transform:rotate(45deg)}
+.wires .head.t{top:46px}
+.wires .head.b{top:178px}
+.wires .lbl{position:absolute;right:22px;max-width:62%;color:var(--arrow);font-weight:600;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.wires .lbl.t{top:22px}
+.wires .lbl.b{top:154px}
+.caption{text-align:center;color:var(--muted);font-size:18px;margin:18px 0 26px}
+
+/* detail */
+.detailline{margin:0 0 10px;font-size:16px;color:var(--muted);overflow-wrap:anywhere}
+.detailline strong{color:var(--text);font-weight:600}
+.bar{height:12px;border-radius:6px;background:var(--track);overflow:hidden}
+.bar i{display:block;height:100%;border-radius:6px 0 0 6px;width:0;transition:width .25s ease}
+.meta{display:flex;flex-wrap:wrap;gap:6px 22px;align-items:center;margin:12px 0 0;font-size:14px;color:var(--muted)}
+.meta span{overflow-wrap:anywhere}
+.meta b{font-weight:600;color:var(--text)}
+.meta .sp{flex:1}
+
+/* controls */
+.controls{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center;margin:20px 0 14px;font-size:14px}
+.seg{display:inline-flex;border:1px solid var(--panel-bd);border-radius:6px;overflow:hidden}
+.seg button{background:var(--field);border:0;border-right:1px solid var(--panel-bd);padding:6px 12px;cursor:pointer}
+.seg button:last-child{border-right:0}
+.seg button[aria-pressed="true"]{background:var(--ca-bg);color:var(--ca-tx)}
+.controls input[type=search],.controls select,.controls input[type=number]{background:var(--field);border:1px solid var(--panel-bd);border-radius:6px;padding:6px 9px}
+.controls input[type=search]{width:220px}
+.controls input[type=number]{width:62px}
+.controls label{display:inline-flex;align-items:center;gap:6px;color:var(--muted)}
+.crumb{margin:0 0 12px;font-size:15px}
+.crumb button{margin-left:8px}
+
+/* tiles */
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(156px,1fr));gap:12px}
+.tile{border:1px solid var(--tile-bd);border-radius:8px;padding:12px 8px 11px;text-align:center;cursor:pointer;min-width:0;line-height:1.3}
+.tile b,.tile span{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tile b{font-size:14px;font-weight:700}
+.tile span{font-size:14px;margin-top:3px}
+.tile[aria-pressed="true"]{outline:2.5px solid var(--sel);outline-offset:2px}
+.s-ok{background:var(--ok-bg);color:var(--ok-tx)}
+.s-watch{background:var(--watch-bg);color:var(--watch-tx)}
+.s-crit{background:var(--crit-bg);color:var(--crit-tx)}
+@keyframes flash{0%,100%{background-color:var(--crit-bg);box-shadow:none}50%{background-color:var(--crit-bar);box-shadow:0 0 0 2px var(--crit-bar),0 0 14px var(--crit-bar)}}
+.tile.s-crit{animation:flash 1.1s ease-in-out infinite}
+.s-expired{background:var(--exp-bg);color:var(--exp-tx);background-image:repeating-linear-gradient(135deg,transparent 0 9px,rgba(255,255,255,.07) 9px 12px)}
+.s-none{background:var(--none-bg);color:var(--none-tx)}
+.empty{grid-column:1/-1;padding:28px 12px;text-align:center;color:var(--muted);border:1px dashed var(--panel-bd);border-radius:8px}
+.note{font-size:14px;color:var(--muted);margin:12px 0 0}
+.legend{display:flex;flex-wrap:wrap;gap:8px 10px;margin-top:16px}
+.legend button{display:inline-flex;align-items:center;gap:8px;background:transparent;border:1px solid transparent;border-radius:6px;padding:4px 9px;cursor:pointer;color:var(--muted);font-size:15px}
+.legend button[aria-pressed="true"]{border-color:var(--sel);color:var(--text)}
+.legend i{width:18px;height:18px;border-radius:4px;border:1px solid var(--tile-bd);display:inline-block}
+
+/* dialogs */
+dialog{background:var(--panel);color:var(--text);border:1px solid var(--panel-bd);border-radius:12px;padding:22px;width:min(760px,94vw);max-height:92vh;overflow:auto}
+dialog::backdrop{background:rgba(0,0,0,.6)}
+dialog h2{font-size:19px;font-weight:600;margin:0 0 14px}
+.form{display:grid;grid-template-columns:1fr 1fr;gap:12px 16px}
+.form label{display:flex;flex-direction:column;gap:4px;font-size:14px;color:var(--muted)}
+.form .wide{grid-column:1/-1}
+.form input,.form textarea,dialog textarea,dialog input[type=text]{background:var(--field);border:1px solid var(--panel-bd);border-radius:6px;padding:7px 9px;color:var(--text);width:100%}
+dialog textarea{min-height:120px;font-family:Consolas,"Cascadia Mono",Menlo,monospace;font-size:13px}
+.dlgrow{display:flex;flex-wrap:wrap;gap:10px 18px;align-items:center;margin-top:12px;font-size:14px}
+.dlgrow label{display:inline-flex;gap:6px;align-items:center}
+.dlgbtns{display:flex;gap:8px;justify-content:flex-end;margin-top:18px}
+.msg{font-size:14px;margin:10px 0 0;min-height:1.4em}
+.msg.err{color:var(--crit-bar)}
+details{margin-top:14px;font-size:14px}
+summary{cursor:pointer;color:var(--muted)}
+pre{background:var(--field);border:1px solid var(--panel-bd);border-radius:6px;padding:10px 12px;overflow-x:auto;font:13px/1.5 Consolas,"Cascadia Mono",Menlo,monospace;margin:8px 0}
+
+@media (max-width:760px){
+  body{padding:12px}
+  .panel{padding:16px 14px}
+  .diagram{display:flex;flex-direction:column;height:auto;gap:12px;margin:0;align-items:stretch}
+  .wires{display:none}
+  .leafs{grid-template-rows:auto auto;gap:12px}
+  .node{min-height:88px}
+  .form{grid-template-columns:1fr}
+  .controls input[type=search]{width:100%}
+}
+@media (prefers-reduced-motion: reduce){.bar i{transition:none}}
+.grid.noflash .tile.s-crit{animation:none}
+</style>
+</head>
+<body>
+<main class="wrap">
+  <header class="top">
+    <div>
+      <h1>AD CS certificate tracker</h1>
+      <p class="muted" id="asof"></p>
+    </div>
+    <div class="actions">
+      <button class="btn primary" id="btnImport">Import CSV</button>
+      <button class="btn" id="btnAdd">Add certificate</button>
+      <button class="btn" id="btnExport">Export CSV</button>
+    </div>
+  </header>
+
+  <div class="banner" id="banner" hidden>
+    <span>Sample data. Import your CA export and it replaces these rows.</span>
+    <button class="btn small" id="btnClearSample">Clear sample</button>
+  </div>
+
+  <section class="panel">
+    <div class="diagram" id="diagram">
+      <div class="node ca">
+        <b id="dCa"></b><span id="dCaSub"></span>
+      </div>
+      <div class="wires" aria-hidden="true">
+        <svg viewBox="0 0 100 236" preserveAspectRatio="none">
+          <path d="M0,100 H32 V52 H100"/><path d="M0,136 H32 V184 H100"/>
+        </svg>
+        <i class="head t"></i><i class="head b"></i>
+        <span class="lbl t" id="dLblTop"></span><span class="lbl b" id="dLblBot"></span>
+      </div>
+      <div class="leafs">
+        <div class="node leaf"><b id="dCn"></b><span id="dTpl"></span><span id="dExp"></span></div>
+        <div class="node leaf"><b id="dHost"></b><span id="dSite"></span><span id="dOwner"></span></div>
+      </div>
+    </div>
+    <p class="caption" id="caption"></p>
+
+    <p class="detailline" id="detailLine"></p>
+    <div class="bar" role="img" id="bar" aria-label="Lifetime used"><i id="barFill"></i></div>
+    <div class="meta" id="meta"></div>
+
+    <div class="controls">
+      <div class="seg" id="seg" role="group" aria-label="Group tiles by">
+        <button data-g="cert">Certificates</button>
+        <button data-g="site">Site</button>
+        <button data-g="template">Template</button>
+        <button data-g="ca">CA</button>
+        <button data-g="owner">Owner</button>
+      </div>
+      <input type="search" id="q" placeholder="Filter by name, site, serial" aria-label="Filter">
+      <label>Sort <select id="sort"><option value="expiry">Soonest expiry</option><option value="name">Name</option></select></label>
+      <label>Critical at <input type="number" id="crit" min="0" max="3650"> days</label>
+      <label>Watch at <input type="number" id="watch" min="1" max="3650"> days</label>
+      <label><input type="checkbox" id="latest"> Hide superseded</label>
+      <label><input type="checkbox" id="flash"> Flash critical</label>
+    </div>
+
+    <p class="crumb" id="crumb" hidden></p>
+    <div class="grid" id="grid"></div>
+    <p class="note" id="note" hidden></p>
+    <div class="legend" id="legend" role="group" aria-label="Filter by status"></div>
+  </section>
+</main>
+
+<dialog id="dlgImport">
+  <h2>Import certificates</h2>
+  <input type="file" id="file" accept=".csv,.txt,.tsv,text/csv">
+  <p class="muted" style="font-size:14px;margin:10px 0 6px">or paste CSV here</p>
+  <textarea id="paste" spellcheck="false" placeholder='"Issued Request ID","Requester Name","Issued Common Name","Certificate Effective Date","Certificate Expiration Date","Certificate Template","Serial Number"'></textarea>
+  <div class="dlgrow">
+    <label style="flex:1;min-width:240px">CA name for rows without one <input type="text" id="defCa" value="Example Issuing CA"></label>
+  </div>
+  <div class="dlgrow">
+    <label><input type="radio" name="mode" value="merge" checked> Merge with current list</label>
+    <label><input type="radio" name="mode" value="replace"> Replace current list</label>
+    <label><input type="checkbox" id="dayFirst"> Dates are dd/mm/yyyy</label>
+  </div>
+  <details>
+    <summary>Export command for the issuing CA</summary>
+    <pre id="ps">certutil -config "ca01.example.com\Example Issuing CA" -view -restrict "Disposition=20" `
+  -out "RequestID,RequesterName,CommonName,NotBefore,NotAfter,CertificateTemplate,SerialNumber" csv |
+  Out-File "$env:USERPROFILE\Downloads\adcs-issued.csv" -Encoding utf8</pre>
+    <button class="btn small" id="btnCopy">Copy command</button>
+    <p class="muted" style="margin:8px 0 0">Disposition 20 is issued certificates. Any CSV with a subject and an expiry column also works, including Get-ChildItem Cert:\ exports and this page's own export. Site, owner, service and notes carry over to renewed certs with the same subject and template.</p>
+  </details>
+  <p class="msg" id="impMsg" role="status"></p>
+  <div class="dlgbtns">
+    <button class="btn" id="impCancel">Cancel</button>
+    <button class="btn primary" id="impGo">Import</button>
+  </div>
+</dialog>
+
+<dialog id="dlgEdit">
+  <h2 id="editTitle">Add certificate</h2>
+  <form id="editForm" class="form" method="dialog">
+    <label class="wide">Subject (CN) <input id="f_cn" required autocomplete="off"></label>
+    <label>Installed on host <input id="f_host" autocomplete="off" placeholder="Defaults to the subject"></label>
+    <label>Site <input id="f_site" autocomplete="off" placeholder="Derived from hostname if blank"></label>
+    <label>Service <input id="f_service" autocomplete="off" placeholder="IIS 443, LDAPS, SCOM gateway"></label>
+    <label>Owner <input id="f_owner" autocomplete="off"></label>
+    <label>Template <input id="f_template" list="lTpl" autocomplete="off"></label>
+    <label>Issuing CA <input id="f_ca" list="lCa" autocomplete="off"></label>
+    <label>Valid from <input type="date" id="f_notBefore"></label>
+    <label>Expires <input type="date" id="f_notAfter" required></label>
+    <label>Serial number <input id="f_serial" autocomplete="off"></label>
+    <label>Thumbprint <input id="f_thumbprint" autocomplete="off"></label>
+    <label>CA request ID <input id="f_reqId" autocomplete="off" inputmode="numeric"></label>
+    <label class="wide">Notes <textarea id="f_notes" rows="2" style="min-height:60px;font-family:inherit;font-size:inherit"></textarea></label>
+    <datalist id="lTpl"></datalist><datalist id="lCa"></datalist>
+    <div class="dlgbtns wide">
+      <button type="button" class="btn" id="editCancel">Cancel</button>
+      <button type="submit" class="btn primary" id="editSave">Save certificate</button>
+    </div>
+  </form>
+</dialog>
+
+<script>
+(() => {
+'use strict';
+const KEY = 'adcs-cert-tracker-v1';
+const DAY = 86400000;
+const TILE_CAP = 600;
+const $ = id => document.getElementById(id);
+const FIELDS = ['cn','host','site','service','template','ca','notBefore','notAfter','serial','thumbprint','owner','requester','notes','reqId'];
+const EXPORT_HDR = ['Subject','Host','Site','Service','Template','IssuingCA','NotBefore','NotAfter','Serial','Thumbprint','Owner','Requester','Notes','RequestID'];
+const STATUS = ['ok','watch','crit','expired','none'];
+const RANK = {expired:0, crit:1, watch:2, ok:3, none:4};
+const GROUP_LABEL = {site:'Site', template:'Template', ca:'CA', owner:'Owner'};
+
+const state = {certs:[], sample:false, group:'cert', drill:null, status:new Set(), query:'', sort:'expiry',
+               crit:30, watch:60, latestOnly:true, flash:true, live:null, liveStale:false, ignored:[], selected:null, editing:null, confirmDel:false};
+let uid = 1;
+
+/* ---------- dates ---------- */
+const pad = n => String(n).padStart(2,'0');
+function today(){ const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), d.getDate()); }
+function iso(y,m,d){
+  if(!(y>1900 && y<2200 && m>=1 && m<=12 && d>=1 && d<=31)) return '';
+  return y+'-'+pad(m)+'-'+pad(d);
+}
+function isoOf(dt){ return iso(dt.getFullYear(), dt.getMonth()+1, dt.getDate()); }
+function mk(s){ const p = s.split('-').map(Number); return new Date(p[0], p[1]-1, p[2]); }
+function addDays(s,n){ const d = mk(s); return isoOf(new Date(d.getFullYear(), d.getMonth(), d.getDate()+n)); }
+function diffDays(a,b){ return Math.round((mk(b) - mk(a)) / DAY); }
+function parseDate(v, dayFirst){
+  if(v == null) return '';
+  const s = String(v).trim();
+  if(!s || /^empty$/i.test(s)) return '';
+  let m = s.match(/^(\d{4})[-\/.](\d{1,2})[-\/.](\d{1,2})/);
+  if(m) return iso(+m[1], +m[2], +m[3]);
+  m = s.match(/^(\d{1,2})([\/.\-])(\d{1,2})\2(\d{2,4})/);
+  if(m){
+    let a = +m[1], b = +m[3], y = +m[4];
+    if(y < 100) y += 2000;
+    let mo = a, d = b;
+    if(dayFirst || m[2] === '.' || (a > 12 && b <= 12)){ mo = b; d = a; }
+    return iso(y, mo, d);
+  }
+  const t = Date.parse(s);
+  return isNaN(t) ? '' : isoOf(new Date(t));
+}
+
+/* ---------- cert helpers ---------- */
+function daysLeft(c){ return c.notAfter ? diffDays(isoOf(today()), c.notAfter) : null; }
+function statusOf(c){
+  const d = daysLeft(c);
+  if(d === null) return 'none';
+  if(d < 0) return 'expired';
+  if(d <= state.crit) return 'crit';
+  if(d <= state.watch) return 'watch';
+  return 'ok';
+}
+function hostOf(c){ return c.host || c.cn; }
+function shortName(n){
+  if(!n) return '';
+  if(n.startsWith('*.')) return n;
+  const p = n.split('.');
+  return p.length >= 3 ? p[0] : n;
+}
+function deriveSite(h){
+  const m = /^(?:OT|LO)([A-Z0-9]{3})/.exec(String(h||'').split('.')[0].toUpperCase());
+  return m ? m[1] : '';
+}
+function siteOf(c){ return (c.site || deriveSite(hostOf(c)) || deriveSite(c.cn)).toUpperCase(); }
+function groupVal(c,f){
+  if(f === 'site') return siteOf(c) || 'No site';
+  if(f === 'template') return c.template || 'No template';
+  if(f === 'ca') return c.ca || 'No CA';
+  if(f === 'owner') return c.owner || 'Unassigned';
+  return '';
+}
+function keyOf(c){ return (c.cn + '|' + c.template).toLowerCase(); }
+function fmtLong(d){
+  if(d === null) return 'no expiry date';
+  if(d < 0) return 'expired ' + (-d) + (d === -1 ? ' day ago' : ' days ago');
+  if(d === 0) return 'expires today';
+  return d + (d === 1 ? ' day left' : ' days left');
+}
+function fmtShort(d){
+  if(d === null) return 'no date';
+  if(d < 0) return 'expired ' + (-d) + 'd';
+  if(d === 0) return 'today';
+  return d + 'd left';
+}
+function statusLabel(s){
+  return {ok:'OK', watch:'Watch', crit:'Critical', expired:'Expired', none:'No expiry date'}[s];
+}
+function blank(){ const c = {id:uid++}; FIELDS.forEach(f => c[f] = ''); return c; }
+
+/* ---------- storage ---------- */
+function save(){
+  try{
+    localStorage.setItem(KEY, JSON.stringify({certs:state.certs, sample:state.sample, crit:state.crit, watch:state.watch, latestOnly:state.latestOnly, flash:state.flash, ignored:state.ignored}));
+  }catch(e){ /* storage unavailable: page still works, use Export CSV to keep changes */ }
+}
+function load(){
+  try{
+    const raw = localStorage.getItem(KEY);
+    if(!raw) return false;
+    const o = JSON.parse(raw);
+    if(!o || !Array.isArray(o.certs)) return false;
+    state.certs = o.certs.map(r => { const c = blank(); FIELDS.forEach(f => { if(typeof r[f] === 'string') c[f] = r[f]; }); if(r.src === 'ca') c.src = 'ca'; return c; });
+    state.sample = !!o.sample;
+    if(Number.isFinite(o.crit)) state.crit = o.crit;
+    if(Number.isFinite(o.watch)) state.watch = o.watch;
+    state.latestOnly = o.latestOnly !== false;
+    state.flash = o.flash !== false;
+    if(Array.isArray(o.ignored)) state.ignored = o.ignored.filter(x => typeof x === 'string');
+    return true;
+  }catch(e){ return false; }
+}
+
+/* ---------- sample ---------- */
+function sampleData(){
+  const t = isoOf(today());
+  const rows = [
+    ['nycweb01','NYC','Web Server','IIS 443',-6,365],
+    ['lonmon01','LON','SCOM Gateway','SCOM gateway',4,730],
+    ['torvc01','TOR','Web Server','vCenter',12,365],
+    ['sydbkp01','SYD','Web Server','Rubrik CDM',19,365],
+    ['nycdc01','NYC','Domain Controller Authentication','LDAPS',27,365],
+    ['berlb01','BER','Web Server','F5 management',38,365],
+    ['parweb01','PAR','Web Server','IIS 443',47,365],
+    ['tyomon01','TYO','SCOM Gateway','SCOM gateway',58,730],
+    ['chiweb01','CHI','Web Server','IIS 443',75,365],
+    ['seadc01','SEA','Domain Controller Authentication','LDAPS',96,365],
+    ['madmon01','MAD','SCOM Gateway','SCOM gateway',130,730],
+    ['romweb01','ROM','Web Server','IIS 443',164,365],
+    ['oslvc01','OSL','Web Server','vCenter',201,365],
+    ['dubweb01','DUB','Web Server','IIS 443',238,365],
+    ['amsdc01','AMS','Domain Controller Authentication','LDAPS',262,365],
+    ['viebkp01','VIE','Web Server','Rubrik CDM',290,365],
+    ['lisweb01','LIS','Web Server','IIS 443',318,365],
+    ['helmon01','HEL','SCOM Gateway','SCOM gateway',420,730],
+    ['prgweb01','PRG','Web Server','IIS 443',510,730],
+    ['zrhmon01','ZRH','SCOM Gateway','SCOM gateway',655,730]
+  ];
+  const out = rows.map((r,i) => {
+    const c = blank();
+    c.cn = r[0] + '.example.com'; c.site = r[1]; c.template = r[2]; c.service = r[3];
+    c.ca = 'Sample Issuing CA';
+    c.notAfter = addDays(t, r[4]); c.notBefore = addDays(c.notAfter, -r[5]);
+    c.serial = '6100000' + (0x1a2b3c + i * 7919).toString(16) + '00000000' + pad(i + 10);
+    c.requester = 'EXAMPLE\\' + r[0].toUpperCase() + '$';
+    return c;
+  });
+  const n = blank(); n.cn = 'warweb01.example.com'; n.site = 'WAR'; n.template = 'Web Server'; n.ca = 'Sample Issuing CA'; n.notes = 'Pending request, not issued yet';
+  out.push(n);
+  return out;
+}
+
+/* ---------- CSV ---------- */
+function parseCSV(text){
+  text = text.replace(/^\uFEFF/, '');
+  const first = (text.split(/\r?\n/).find(l => l.trim()) || '');
+  const cnt = ch => first.split(ch).length - 1;
+  const delim = cnt('\t') > cnt(',') ? '\t' : (cnt(';') > cnt(',') ? ';' : ',');
+  const rows = []; let row = [], cur = '', q = false;
+  for(let i = 0; i < text.length; i++){
+    const ch = text[i];
+    if(q){
+      if(ch === '"'){ if(text[i+1] === '"'){ cur += '"'; i++; } else q = false; }
+      else cur += ch;
+    }
+    else if(ch === '"') q = true;
+    else if(ch === delim){ row.push(cur); cur = ''; }
+    else if(ch === '\n'){ row.push(cur); rows.push(row); row = []; cur = ''; }
+    else if(ch !== '\r') cur += ch;
+  }
+  if(cur !== '' || row.length){ row.push(cur); rows.push(row); }
+  return rows.filter(r => r.some(c => c.trim() !== ''));
+}
+const ALIASES = {
+  cn:['subject','subjectname','cn','commonname','issuedcommonname','name','dnsname','fqdn'],
+  host:['host','hostname','server','computer','computername','installedon','machine'],
+  site:['site','sitecode','location'],
+  service:['service','purpose','use','usage','application','app','role','binding'],
+  template:['template','certificatetemplate','templatename'],
+  ca:['ca','issuingca','issuer','caname','issuername','issuedby'],
+  notBefore:['notbefore','validfrom','certificateeffectivedate','effectivedate','issued','issuedon','startdate'],
+  notAfter:['notafter','validto','certificateexpirationdate','expirationdate','expires','expiry','expireson','expiration','enddate'],
+  serial:['serial','serialnumber'],
+  thumbprint:['thumbprint','certificatehash','certhash','sha1'],
+  owner:['owner','contact','team','responsible'],
+  requester:['requester','requestername'],
+  notes:['notes','note','comment','comments','description'],
+  reqId:['requestid','issuedrequestid','id']
+};
+const FUZZY = [['notAfter',/expir|notafter|validto/],['notBefore',/effective|notbefore|validfrom/],['template',/template/],
+  ['cn',/commonname|subject/],['serial',/serial/],['thumbprint',/thumb|hash/],['requester',/requester/],['ca',/issuer|issuingca/]];
+function mapHeaders(hdr){
+  const norm = hdr.map(h => h.toLowerCase().replace(/[^a-z0-9]/g, ''));
+  const map = {}, used = new Set();
+  for(const f in ALIASES){
+    const i = norm.findIndex((h,ix) => !used.has(ix) && ALIASES[f].includes(h));
+    if(i >= 0){ map[f] = i; used.add(i); }
+  }
+  for(const [f,re] of FUZZY){
+    if(map[f] != null) continue;
+    const i = norm.findIndex((h,ix) => !used.has(ix) && re.test(h));
+    if(i >= 0){ map[f] = i; used.add(i); }
+  }
+  return map;
+}
+function cnOf(s){
+  const m = /(?:^|,\s*)CN\s*=\s*(?:"([^"]+)"|([^,]+))/i.exec(s);
+  return (m ? (m[1] || m[2]) : s).trim();
+}
+function parseImport(text, defCa, dayFirst){
+  const rows = parseCSV(text);
+  if(rows.length < 2) return {error:'No data rows found. The first row must be column headers.'};
+  const map = mapHeaders(rows[0]);
+  if(map.notAfter == null) return {error:'No expiry column found. Headers seen: ' + rows[0].join(', ')};
+  if(map.cn == null && map.requester == null && map.host == null) return {error:'No subject column found. Headers seen: ' + rows[0].join(', ')};
+  const get = (r,f) => { if(map[f] == null) return ''; const v = (r[map[f]] || '').trim(); return /^empty$/i.test(v) ? '' : v; };
+  const out = []; let skipped = 0;
+  for(let i = 1; i < rows.length; i++){
+    const r = rows[i], c = blank();
+    c.requester = get(r,'requester');
+    c.cn = cnOf(get(r,'cn'));
+    c.host = get(r,'host');
+    if(!c.cn) c.cn = c.host || c.requester.split('\\').pop().replace(/\$$/, '') || (get(r,'reqId') ? 'Request ' + get(r,'reqId') : '');
+    c.notAfter = parseDate(get(r,'notAfter'), dayFirst);
+    c.notBefore = parseDate(get(r,'notBefore'), dayFirst);
+    if(!c.cn || (!c.notAfter && get(r,'notAfter'))){ skipped++; uid--; continue; }
+    c.site = get(r,'site').toUpperCase();
+    c.service = get(r,'service');
+    c.template = get(r,'template').replace(/^\d+(?:\.\d+){5,}\s+(?=\S)/, '');
+    c.ca = cnOf(get(r,'ca')) || defCa;
+    c.serial = get(r,'serial').replace(/\s+/g, '').toLowerCase();
+    c.thumbprint = get(r,'thumbprint').replace(/\s+/g, '').toUpperCase();
+    c.owner = get(r,'owner');
+    c.notes = get(r,'notes');
+    c.reqId = get(r,'reqId');
+    out.push(c);
+  }
+  return {certs:out, skipped};
+}
+function applyImport(incoming, mode){
+  const ANN = ['host','site','service','owner','notes'];
+  const existing = state.sample ? [] : state.certs;
+  const ann = new Map();
+  [...existing].sort((a,b) => (a.notAfter || '').localeCompare(b.notAfter || '')).forEach(c => {
+    const o = ann.get(keyOf(c)) || {};
+    ANN.forEach(f => { if(c[f]) o[f] = c[f]; });
+    ann.set(keyOf(c), o);
+  });
+  incoming.forEach(c => { const o = ann.get(keyOf(c)); if(o) ANN.forEach(f => { if(!c[f] && o[f]) c[f] = o[f]; }); });
+  let added = 0, updated = 0;
+  if(mode === 'live'){
+    const hidden = new Set(state.ignored);
+    incoming = incoming.filter(c => !(c.serial && hidden.has(c.serial)));
+    const serials = new Set(incoming.map(c => c.serial).filter(Boolean));
+    const keys = new Set(incoming.map(c => keyOf(c) + '|' + c.notAfter));
+    incoming.forEach(c => { c.src = 'ca'; });
+    state.certs = existing.filter(c => c.src !== 'ca' && !(c.serial && serials.has(c.serial)) && !keys.has(keyOf(c) + '|' + c.notAfter)).concat(incoming);
+    added = incoming.length;
+  }
+  else if(mode === 'replace' || state.sample){ state.certs = incoming; added = incoming.length; }
+  else{
+    const bySerial = new Map(), byKey = new Map();
+    existing.forEach(c => { if(c.serial) bySerial.set(c.serial, c); byKey.set(keyOf(c) + '|' + c.notAfter, c); });
+    incoming.forEach(c => {
+      const hit = (c.serial && bySerial.get(c.serial)) || byKey.get(keyOf(c) + '|' + c.notAfter);
+      if(hit){ FIELDS.forEach(f => { if(c[f]) hit[f] = c[f]; }); updated++; }
+      else{ state.certs.push(c); added++; }
+    });
+  }
+  state.sample = false;
+  return {added, updated};
+}
+function csvCell(v){ v = String(v == null ? '' : v); return /[",\r\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }
+function exportCSV(){
+  const lines = [EXPORT_HDR.join(',')];
+  state.certs.forEach(c => lines.push(FIELDS.map(f => csvCell(f === 'site' ? siteOf(c) : c[f])).join(',')));
+  const blob = new Blob(['\uFEFF' + lines.join('\r\n')], {type:'text/csv;charset=utf-8'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'adcs-cert-tracker-' + isoOf(today()) + '.csv';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+
+/* ---------- view ---------- */
+function el(tag, attrs, ...kids){
+  const n = document.createElement(tag);
+  for(const k in (attrs || {})){
+    const v = attrs[k];
+    if(v == null || v === false) continue;
+    if(k === 'class') n.className = v;
+    else if(k === 'text') n.textContent = v;
+    else if(k.startsWith('on')) n.addEventListener(k.slice(2), v);
+    else n.setAttribute(k, v);
+  }
+  kids.forEach(kid => { if(kid != null) n.append(kid); });
+  return n;
+}
+function compute(){
+  let list = state.certs, superseded = 0;
+  if(state.latestOnly){
+    const best = new Map();
+    list.forEach(c => { const k = keyOf(c), b = best.get(k); if(!b || (c.notAfter || '') > (b.notAfter || '')) best.set(k, c); });
+    superseded = list.length - best.size;
+    list = list.filter(c => best.get(keyOf(c)) === c);
+  }
+  const q = state.query.trim().toLowerCase();
+  if(q) list = list.filter(c => [c.cn, c.host, siteOf(c), c.service, c.template, c.ca, c.owner, c.serial, c.thumbprint, c.notes, c.requester, c.reqId ? 'id ' + c.reqId : ''].join('\n').toLowerCase().includes(q));
+  if(state.drill) list = list.filter(c => groupVal(c, state.drill.field) === state.drill.value);
+  const counts = {ok:0, watch:0, crit:0, expired:0, none:0};
+  list.forEach(c => counts[statusOf(c)]++);
+  const total = list.length;
+  if(state.status.size) list = list.filter(c => state.status.has(statusOf(c)));
+  const byExp = (a,b) => {
+    const x = daysLeft(a), y = daysLeft(b);
+    if(x === null || y === null) return (x === null) - (y === null) || a.cn.localeCompare(b.cn);
+    return x - y || a.cn.localeCompare(b.cn);
+  };
+  const base = state.sort === 'name' ? (a,b) => shortName(a.cn).localeCompare(shortName(b.cn)) : byExp;
+  const isCrit = c => statusOf(c) === 'crit' ? 1 : 0;
+  list = [...list].sort((a,b) => isCrit(b) - isCrit(a) || base(a,b));
+  const soonest = list[0] || null;
+  return {list, counts, total, superseded, soonest};
+}
+function render(){
+  const v = compute();
+  $('asof').textContent = 'As of ' + isoOf(today()) + ', ' + state.certs.length + (state.certs.length === 1 ? ' certificate' : ' certificates') + ' tracked, '
+    + (state.live ? 'CA export from ' + state.live.replace('T', ' ').slice(0, 16) + (state.liveStale ? ' (stale, check the export task)' : '') : 'manual import') + ', build 7';
+  $('banner').hidden = !state.sample;
+  const grouped = state.group !== 'cert' && !state.drill;
+
+  let sel = v.list.find(c => c.id === state.selected) || null;
+  if(!sel){ sel = v.soonest; state.selected = sel ? sel.id : null; state.confirmDel = false; }
+  renderDetail(sel);
+
+  [...$('seg').children].forEach(b => b.setAttribute('aria-pressed', String(b.dataset.g === state.group)));
+  const crumb = $('crumb');
+  crumb.hidden = !state.drill; crumb.textContent = '';
+  if(state.drill){
+    crumb.append(GROUP_LABEL[state.drill.field] + ': ', el('strong', {text:state.drill.value}),
+      el('button', {class:'btn small', text:'Back to all ' + GROUP_LABEL[state.drill.field].toLowerCase() + ' tiles', onclick:() => { state.drill = null; render(); }}));
+  }
+
+  const grid = $('grid'); grid.textContent = '';
+  grid.classList.toggle('noflash', !state.flash);
+  let shown = 0;
+  if(!v.list.length){
+    grid.append(el('div', {class:'empty', text: state.certs.length ? 'No certificates match the current filter.' : 'No certificates yet. Import a CSV from the CA or add one by hand.'}));
+  }
+  else if(grouped){
+    const groups = new Map();
+    v.list.forEach(c => { const k = groupVal(c, state.group); (groups.get(k) || groups.set(k, []).get(k)).push(c); });
+    const arr = [...groups.entries()].map(([name, cs]) => {
+      let worst = 'none', min = null, crit = 0;
+      cs.forEach(c => { const s = statusOf(c), d = daysLeft(c); if(s === 'crit') crit++; if(RANK[s] < RANK[worst]) worst = s; if(d !== null && (min === null || d < min)) min = d; });
+      if(crit) worst = 'crit';
+      return {name, cs, worst, min, crit};
+    });
+    const gBase = state.sort === 'name' ? (a,b) => a.name.localeCompare(b.name)
+      : (a,b) => (a.min === null) - (b.min === null) || (a.min - b.min) || a.name.localeCompare(b.name);
+    arr.sort((a,b) => (b.crit > 0) - (a.crit > 0) || gBase(a,b));
+    arr.forEach(g => {
+      grid.append(el('button', {class:'tile s-' + g.worst, title:g.name + ': ' + g.cs.length + ' certificates, soonest ' + fmtLong(g.min),
+        onclick:() => { state.drill = {field:state.group, value:g.name}; state.selected = null; render(); }},
+        el('b', {text:g.name}), el('span', {text:g.cs.length + (g.cs.length === 1 ? ' cert, ' : ' certs, ') + (g.crit ? g.crit + ' critical' : fmtShort(g.min))})));
+    });
+    shown = v.list.length;
+  }
+  else{
+    v.list.slice(0, TILE_CAP).forEach(c => {
+      const d = daysLeft(c);
+      grid.append(el('button', {class:'tile s-' + statusOf(c), 'aria-pressed':String(sel && c.id === sel.id),
+        title:c.cn + (c.reqId ? ', request ID ' + c.reqId : '') + (c.template ? ', ' + c.template : '') + ', ' + fmtLong(d),
+        onclick:() => { state.selected = c.id; state.confirmDel = false; render(); }},
+        el('b', {text:shortName(c.cn).toLowerCase()}), el('span', {text:fmtShort(d)})));
+    });
+    shown = Math.min(v.list.length, TILE_CAP);
+  }
+
+  const bits = [];
+  if(!grouped && v.list.length > TILE_CAP) bits.push('Showing the first ' + TILE_CAP + ' of ' + v.list.length + '. Filter or group to narrow.');
+  if(v.superseded) bits.push(v.superseded + ' superseded ' + (v.superseded === 1 ? 'certificate' : 'certificates') + ' hidden.');
+  if(state.ignored.length) bits.push(state.ignored.length + ' deleted CA ' + (state.ignored.length === 1 ? 'certificate' : 'certificates') + ' kept hidden.');
+  $('note').hidden = !bits.length; $('note').textContent = bits.join(' ');
+  if(state.ignored.length) $('note').append(' ', el('button', {class:'btn small', text:'Restore', onclick:() => { state.ignored = []; state.live = null; save(); render(); loadLive(); }}));
+
+  const lg = $('legend'); lg.textContent = '';
+  const ltxt = {ok:'OK', watch:'Watch, ' + state.watch + ' days or less', crit:'Critical, ' + state.crit + ' days or less', expired:'Expired', none:'No expiry date'};
+  STATUS.forEach(s => {
+    lg.append(el('button', {'aria-pressed':String(state.status.has(s)), title:'Show only ' + statusLabel(s).toLowerCase(),
+      onclick:() => { state.status.has(s) ? state.status.delete(s) : state.status.add(s); state.selected = null; render(); }},
+      el('i', {class:'s-' + s}), ltxt[s] + ' (' + v.counts[s] + ')'));
+  });
+}
+function renderDetail(c){
+  const set = (id,t) => { $(id).textContent = t; $(id).title = t; };
+  const meta = $('meta'); meta.textContent = '';
+  const fill = $('barFill');
+  if(!c){
+    set('dCa','No certificate selected'); set('dCaSub','Issuing CA');
+    set('dCn','Certificate'); set('dTpl',''); set('dExp','');
+    set('dHost','Installed on'); set('dSite',''); set('dOwner','');
+    set('dLblTop',''); set('dLblBot','');
+    $('caption').textContent = 'Import a CSV or add a certificate to start';
+    $('detailLine').textContent = '';
+    fill.style.width = '0';
+    return;
+  }
+  const d = daysLeft(c), s = statusOf(c), site = siteOf(c);
+  set('dCa', c.ca || 'CA not set'); set('dCaSub', 'Issuing CA');
+  set('dTpl', !c.template ? 'Template not recorded' : (/^\d+(\.\d+)+$/.test(c.template) ? 'Template OID ' : 'Template: ') + c.template);
+  set('dCn', c.cn);
+  set('dExp', (c.reqId ? 'Request ID ' + c.reqId + ', ' : '') + (c.notAfter ? (c.reqId ? 'expires ' : 'Expires ') + c.notAfter : (c.reqId ? 'no expiry date' : 'No expiry date')));
+  set('dHost', shortName(hostOf(c)).toUpperCase()); set('dSite', site ? 'Site ' + site : 'No site');
+  set('dOwner', c.owner ? 'Owner ' + c.owner : 'No owner set');
+  set('dLblTop', c.notBefore ? 'Issued ' + c.notBefore : 'Issued');
+  set('dLblBot', c.service || 'Installed on');
+
+  const renewBy = c.notAfter ? addDays(c.notAfter, -state.crit) : '';
+  $('caption').textContent = s === 'none' ? 'No expiry date recorded'
+    : s === 'expired' ? 'Expired, replace now'
+    : s === 'crit' ? 'Critical, inside the ' + state.crit + '-day renewal window, renew now'
+    : statusLabel(s) + ', renew by ' + renewBy;
+
+  const line = $('detailLine'); line.textContent = '';
+  line.append(el('strong', {text:(site ? site + ' ' : '') + c.cn}), ': ');
+  let pct = null;
+  if(c.notAfter && c.notBefore){
+    const life = diffDays(c.notBefore, c.notAfter), used = diffDays(c.notBefore, isoOf(today()));
+    if(life > 0){
+      pct = Math.max(0, Math.min(1, used / life));
+      line.append(Math.max(0, Math.min(life, used)) + ' of ' + life + ' days used (' + fmtLong(d) + '), expires ' + c.notAfter);
+    }
+  }
+  if(pct === null) line.append(c.notAfter ? fmtLong(d) + ', expires ' + c.notAfter + ', issue date not recorded' : 'no expiry date recorded');
+  if(pct === null && d !== null) pct = d < 0 ? 1 : 0;
+  fill.style.width = ((pct || 0) * 100).toFixed(1) + '%';
+  fill.style.background = 'var(--' + ({ok:'ok', watch:'watch', crit:'crit', expired:'exp', none:'ok'}[s]) + '-bar)';
+  $('bar').setAttribute('aria-label', 'Lifetime used ' + Math.round((pct || 0) * 100) + ' percent');
+
+  [['Request ID', c.reqId], ['Template', c.template], ['Service', c.service], ['Serial', c.serial], ['Thumbprint', c.thumbprint], ['Requester', c.requester], ['Notes', c.notes]]
+    .forEach(([k,val]) => { if(val) meta.append(el('span', null, el('b', {text:k + ' '}), val)); });
+  meta.append(el('span', {class:'sp'}),
+    el('button', {class:'btn small', text:'Edit', onclick:() => openEdit(c)}),
+    el('button', {class:'btn small danger', text:state.confirmDel ? 'Confirm delete' : 'Delete', onclick:() => {
+      if(!state.confirmDel){ state.confirmDel = true; render(); return; }
+      if(c.src === 'ca' && c.serial && !state.ignored.includes(c.serial)) state.ignored.push(c.serial);
+      state.certs = state.certs.filter(x => x.id !== c.id); state.selected = null; state.confirmDel = false; save(); render();
+    }}));
+}
+
+/* ---------- edit dialog ---------- */
+function openEdit(c){
+  state.editing = c ? c.id : null;
+  $('editTitle').textContent = c ? 'Edit certificate' : 'Add certificate';
+  ['cn','host','site','service','template','ca','notBefore','notAfter','serial','thumbprint','owner','notes','reqId'].forEach(f => { $('f_' + f).value = c ? c[f] : ''; });
+  const fillList = (id, f) => { const dl = $(id); dl.textContent = ''; [...new Set(state.certs.map(x => x[f]).filter(Boolean))].sort().forEach(v => dl.append(el('option', {value:v}))); };
+  fillList('lTpl','template'); fillList('lCa','ca');
+  $('dlgEdit').showModal();
+}
+$('editForm').addEventListener('submit', e => {
+  e.preventDefault();
+  let c = state.certs.find(x => x.id === state.editing);
+  if(!c){
+    c = blank();
+    if(state.sample){ state.certs = []; state.sample = false; }
+    state.certs.push(c);
+  }
+  ['cn','host','site','service','template','ca','notBefore','notAfter','serial','thumbprint','owner','notes','reqId'].forEach(f => { c[f] = $('f_' + f).value.trim(); });
+  c.site = c.site.toUpperCase(); c.serial = c.serial.replace(/\s+/g, '').toLowerCase(); c.thumbprint = c.thumbprint.replace(/\s+/g, '').toUpperCase();
+  state.selected = c.id; state.confirmDel = false;
+  save(); $('dlgEdit').close(); render();
+});
+$('editCancel').addEventListener('click', () => $('dlgEdit').close());
+$('btnAdd').addEventListener('click', () => openEdit(null));
+
+/* ---------- import dialog ---------- */
+$('btnImport').addEventListener('click', () => { $('impMsg').textContent = ''; $('impMsg').className = 'msg'; $('dlgImport').showModal(); });
+$('impCancel').addEventListener('click', () => $('dlgImport').close());
+$('file').addEventListener('change', e => {
+  const f = e.target.files[0]; if(!f) return;
+  const rd = new FileReader();
+  rd.onload = () => {
+    let t = rd.result;
+    if(typeof t !== 'string'){
+      const u8 = new Uint8Array(t);
+      const enc = (u8[0] === 0xFF && u8[1] === 0xFE) ? 'utf-16le' : (u8[0] === 0xFE && u8[1] === 0xFF) ? 'utf-16be' : 'utf-8';
+      t = new TextDecoder(enc).decode(u8);
+    }
+    $('paste').value = t;
+    $('impMsg').className = 'msg'; $('impMsg').textContent = f.name + ' loaded. Select Import to add it.';
+  };
+  rd.readAsArrayBuffer(f);
+});
+$('impGo').addEventListener('click', () => {
+  const msg = $('impMsg'), text = $('paste').value;
+  if(!text.trim()){ msg.className = 'msg err'; msg.textContent = 'Choose a file or paste CSV first.'; return; }
+  const res = parseImport(text, $('defCa').value.trim(), $('dayFirst').checked);
+  if(res.error){ msg.className = 'msg err'; msg.textContent = res.error; return; }
+  if(!res.certs.length){ msg.className = 'msg err'; msg.textContent = 'No usable rows. ' + res.skipped + ' skipped for a missing subject or unreadable date.'; return; }
+  const mode = document.querySelector('input[name=mode]:checked').value;
+  const r = applyImport(res.certs, mode);
+  state.selected = null; state.drill = null; save(); render();
+  $('paste').value = ''; $('file').value = '';
+  msg.className = 'msg';
+  msg.textContent = 'Imported: ' + r.added + ' added, ' + r.updated + ' updated' + (res.skipped ? ', ' + res.skipped + ' skipped' : '') + '.';
+  setTimeout(() => { if($('dlgImport').open) $('dlgImport').close(); }, 900);
+});
+$('btnCopy').addEventListener('click', () => {
+  const t = $('ps').textContent, b = $('btnCopy');
+  const done = () => { b.textContent = 'Copied'; setTimeout(() => b.textContent = 'Copy command', 1500); };
+  const fallback = () => { const r = document.createRange(); r.selectNodeContents($('ps')); const s = getSelection(); s.removeAllRanges(); s.addRange(r); try{ document.execCommand('copy'); done(); }catch(e){} };
+  if(navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(t).then(done, fallback); else fallback();
+});
+
+/* ---------- controls ---------- */
+$('btnExport').addEventListener('click', exportCSV);
+$('btnClearSample').addEventListener('click', () => { state.certs = []; state.sample = false; state.selected = null; state.drill = null; save(); render(); });
+$('seg').addEventListener('click', e => { const g = e.target.dataset.g; if(!g) return; state.group = g; state.drill = null; render(); });
+$('q').addEventListener('input', e => { state.query = e.target.value; render(); });
+$('sort').addEventListener('change', e => { state.sort = e.target.value; render(); });
+$('latest').addEventListener('change', e => { state.latestOnly = e.target.checked; save(); render(); });
+$('flash').addEventListener('change', e => { state.flash = e.target.checked; save(); render(); });
+function thresholds(){
+  let c = parseInt($('crit').value, 10), w = parseInt($('watch').value, 10);
+  if(!Number.isFinite(c) || c < 0) c = state.crit;
+  if(!Number.isFinite(w) || w < 1) w = state.watch;
+  if(w <= c) w = c + 1;
+  state.crit = c; state.watch = w; $('crit').value = c; $('watch').value = w;
+  save(); render();
+}
+$('crit').addEventListener('change', thresholds);
+$('watch').addEventListener('change', thresholds);
+
+/* ---------- live link: adcs-data.js written next to this file by Export-AdcsTracker.ps1 ---------- */
+function applyLive(d){
+  if(!d || typeof d.csv !== 'string') return;
+  const stamp = d.generated || 'unknown time';
+  const age = d.generated ? (Date.now() - Date.parse(d.generated)) / 36e5 : 0;
+  const stale = age > 36;
+  if(stamp === state.live){ if(stale !== state.liveStale){ state.liveStale = stale; render(); } return; }
+  const res = parseImport(d.csv, d.ca || 'CA', false);
+  if(res.error || !res.certs.length) return;
+  const cur = state.certs.find(x => x.id === state.selected);
+  const selKey = cur ? (cur.serial || keyOf(cur)) : null;
+  applyImport(res.certs, 'live');
+  state.live = stamp; state.liveStale = stale;
+  const again = selKey && state.certs.find(x => (x.serial || keyOf(x)) === selKey);
+  state.selected = again ? again.id : null;
+  save(); render();
+}
+function loadLive(){
+  const old = document.getElementById('liveData'); if(old) old.remove();
+  const sc = document.createElement('script');
+  sc.id = 'liveData'; sc.src = 'adcs-data.js?t=' + Date.now();
+  sc.onload = () => applyLive(window.ADCS_EXPORT);
+  sc.onerror = () => {};
+  document.head.appendChild(sc);
+}
+
+/* ---------- start ---------- */
+if(!load()){ state.certs = sampleData(); state.sample = true; }
+$('crit').value = state.crit; $('watch').value = state.watch; $('latest').checked = state.latestOnly; $('flash').checked = state.flash;
+render();
+loadLive();
+setInterval(loadLive, 10 * 60 * 1000);
+})();
+</script>
+</body>
+</html>
